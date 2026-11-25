@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Áreas{% endblock %}
+{% block page_title %}Áreas de la empresa{% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-3 wrap gap-2">
+  <p class="muted">Áreas <b>administrativas</b> (gerencia, contabilidad, RR. HH.…), <b>operativas</b> y de <b>apoyo</b> de cada cliente. Sirven para ubicar puestos y comparar riesgos entre áreas.</p>
+  {% if can('emp_edit') %}<button type="button" class="btn" id="btnNuevo">+ Nueva área</button>{% endif %}
+</div>
+
+<div class="box hidden" id="formBox">
+  <div class="box-header"><span id="formTitulo">Nueva área</span><button type="button" class="btn-sec btn-sm" id="btnCerrar">Cerrar</button></div>
+  <div class="box-body">
+    <form id="aForm">
+      <div class="form-row">
+        <div><label>Empresa *</label>
+          <select name="empresa_id" required><option value="">— Selecciona —</option>{% for e in empresas %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}</select></div>
+        <div><label>Tipo de área</label>
+          <select name="tipo">{% for t in CAT.tipos_area %}<option>{{ t }}</option>{% endfor %}</select></div>
+        <div><label>Nombre del área *</label>
+          <input name="nombre" required maxlength="80" list="sugeridas" placeholder="Elige o escribe…"><datalist id="sugeridas">{% for a in CAT.areas_sugeridas %}<option value="{{ a }}">{% endfor %}</datalist></div>
+        <div><label>Nº de personas</label><input type="number" name="num_personas" min="0" max="100000"></div>
+      </div>
+      <div class="form-row">
+        <div><label>Responsable</label><input name="responsable" maxlength="100"></div>
+        <div><label>Cargo del responsable</label><input name="cargo_responsable" maxlength="60"></div>
+      </div>
+      <div class="form-row"><div style="grid-column:1/-1"><label>Descripción</label><input name="descripcion" maxlength="250"></div></div>
+      <div class="form-actions">
+        <button type="submit" class="btn">Guardar área</button>
+        {% if can('emp_del') %}<button type="button" class="btn-danger hidden" id="btnBorrar">Eliminar</button>{% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="box">
+  <div class="box-body flex gap-2 wrap items-center" style="padding:12px 16px">
+    <select id="fEmp" style="width:auto;min-width:200px"><option value="">Todas las empresas</option>{% for e in empresas %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}</select>
+    <div class="seg" id="segTipo"><button type="button" data-v="" class="on">Todas</button>{% for t in CAT.tipos_area %}<button type="button" data-v="{{ t }}">{{ t }}</button>{% endfor %}</div>
+    <input type="search" id="q" placeholder="Buscar área o responsable…" style="flex:1;min-width:180px">
+  </div>
+  <div class="scr tall">
+    <table>
+      <thead><tr><th>Empresa</th><th>Área</th><th>Tipo</th><th>Responsable</th><th>Personas</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var DATA = {{ areas|tojson }}, EDIT = null, T = '', PUEDE = {{ 'true' if can('emp_edit') else 'false' }};
+var form = document.getElementById('aForm');
+function render() {
+  var q = document.getElementById('q').value.trim().toLowerCase(), fe = document.getElementById('fEmp').value;
+  var rows = DATA.filter(function (a) {
+    return (!fe || String(a.empresa_id) === fe) && (!T || a.tipo === T) && (!q || (a.nombre + ' ' + a.responsable).toLowerCase().indexOf(q) >= 0);
+  });
+  var cls = { Administrativa: 'badge-b', Operativa: 'badge-y', Apoyo: 'badge-g' };
+  document.getElementById('tbody').innerHTML = rows.length ? rows.map(function (a) {
+    return '<tr class="log-row" data-id="' + a.id + '"><td>' + esc(a.empresa) + '</td><td><b>' + esc(a.nombre) + '</b><div class="muted">' + esc(a.descripcion) + '</div></td><td><span class="' + (cls[a.tipo] || 'badge-b') + '">' + esc(a.tipo) + '</span></td><td>' + esc(a.responsable) + (a.cargo_responsable ? '<div class="muted">' + esc(a.cargo_responsable) + '</div>' : '') + '</td><td>' + esc(a.num_personas === '' ? '—' : a.num_personas) + '</td></tr>';
+  }).join('') : '<tr><td colspan="5" class="vacio">Sin áreas registradas.</td></tr>';
+}
+function abrir(a) {
+  if (!PUEDE) return;
+  EDIT = a ? a.id : null; form.reset();
+  if (a) Object.keys(a).forEach(function (k) { if (form.elements[k]) form.elements[k].value = a[k]; });
+  document.getElementById('formTitulo').textContent = a ? 'Editar área' : 'Nueva área';
+  var b = document.getElementById('btnBorrar'); if (b) b.classList.toggle('hidden', !a);
+  document.getElementById('formBox').classList.remove('hidden'); attachCounters(form);
+}
+var bn = document.getElementById('btnNuevo'); if (bn) bn.onclick = function () { abrir(null); };
+document.getElementById('btnCerrar').onclick = function () { document.getElementById('formBox').classList.add('hidden'); };
+document.getElementById('tbody').onclick = function (e) { var r = e.target.closest('tr[data-id]'); if (r) abrir(DATA.find(function (a) { return String(a.id) === r.dataset.id; })); };
+document.getElementById('q').oninput = render; document.getElementById('fEmp').onchange = render;
+document.getElementById('segTipo').onclick = function (e) {
+  var b = e.target.closest('button'); if (!b) return; T = b.dataset.v;
+  this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); }); render();
+};
+form.onsubmit = async function (e) {
+  e.preventDefault();
+  var body = {}; Array.prototype.forEach.call(form.elements, function (el) { if (el.name) body[el.name] = el.value; });
+  var r = await api(EDIT ? '/api/area/' + EDIT : '/api/area', { method: EDIT ? 'PUT' : 'POST', body: body });
+  if (r.ok) { toast(r.data.msg, 'ok'); setTimeout(function () { location.reload(); }, 450); }
+};
+var bb = document.getElementById('btnBorrar');
+if (bb) bb.onclick = async function () {
+  if (!EDIT || !confirm('¿Eliminar esta área?')) return;
+  var r = await api('/api/area/' + EDIT, { method: 'DELETE' });
+  if (r.ok) { toast(r.data.msg, 'ok'); setTimeout(function () { location.reload(); }, 400); }
+};
+render();
+</script>
+{% endblock %}

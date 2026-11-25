@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Consultar servicio{% endblock %}
+{% block page_title %}Consulta de servicio por código{% endblock %}
+
+{% block content %}
+<div style="max-width:720px;margin:0 auto">
+  <div class="box">
+    <div class="box-body">
+      <h2 style="font-size:15px;font-weight:600;margin-bottom:4px">Acceso a informe de servicio</h2>
+      <p class="muted mb-3">Ingresa el código proporcionado por el ingeniero y confirma tu identidad.</p>
+      <form id="consultaForm" onsubmit="return consultar(event)">
+        <div class="form-row">
+          <div>
+            <label>Código de acceso *</label>
+            <input name="codigo" required placeholder="Ej: MET2026A1" style="font-family:monospace;text-transform:uppercase;letter-spacing:1px" maxlength="20">
+          </div>
+          <div>
+            <label>Nombre de contacto</label>
+            <input name="contacto" placeholder="Persona que contrató el servicio">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn" id="btnConsultar">Ver informe</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="resultado"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function consultar(e) {
+  e.preventDefault();
+  var form = e.target;
+  var codigo = form.codigo.value.trim();
+  var contacto = form.contacto.value.trim();
+  var btn = document.getElementById('btnConsultar');
+  btn.disabled = true; btn.textContent = 'Consultando...';
+  var res = await api('/api/servicio/consultar', { method:'POST', body:{ codigo:codigo, contacto:contacto } });
+  btn.disabled = false; btn.textContent = 'Ver informe';
+  if (!res.ok) return false;
+
+  var d = res.data;
+  var html = '<div class="box"><div class="box-body">';
+  html += '<div class="flex justify-between items-center mb-2">';
+  html += '<div><h3 style="font-size:16px;font-weight:600">' + esc(d.servicio.empresa) + '</h3>';
+  html += '<p class="muted">' + esc(d.servicio.titulo) + '</p></div>';
+  html += '<span class="badge-b">' + d.servicio.estado + '</span></div>';
+  html += '<p class="muted">Vigencia: ' + d.servicio.fecha_inicio + ' → ' + d.servicio.fecha_fin;
+  html += ' · Código: <b class="font-mono">' + d.servicio.codigo_acceso + '</b></p></div></div>';
+
+  (d.sedes || []).forEach(function(sede) {
+    html += '<div class="box"><div class="box-header">Sede: ' + esc(sede.nombre) + '</div>';
+    (sede.salones || []).forEach(function(salon) {
+      html += '<div style="padding:8px 16px;background:var(--papel-2);border-bottom:1px solid var(--borde-suave);font-size:12px;font-weight:600;color:var(--suave)">Salón: ' + esc(salon.nombre) + '</div>';
+      html += '<div class="table-wrap"><table><tr><th>Puesto</th><th>Área</th><th>Evaluación</th><th>Recomendación</th></tr>';
+      (salon.puestos || []).forEach(function(p) {
+        var nombre = (p.numero_puesto ? p.numero_puesto + ' · ' : '') + p.nombre;
+        var ev = p.evaluacion;
+        var badge = ev ? (ev.resultado==='Grave'?'badge-r':ev.resultado==='Medio'?'badge-y':'badge-g') : '';
+        html += '<tr><td>' + esc(nombre) + '</td><td class="muted">' + esc(p.area||'-') + '</td>';
+        if (ev) {
+          html += '<td><span class="' + badge + '">' + ev.resultado + '</span> <span class="muted">Pts ' + ev.puntuacion + '</span></td>';
+          html += '<td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(ev.recomendaciones||'-') + '</td>';
+        } else {
+          html += '<td class="muted">Sin evaluar</td><td class="muted">-</td>';
+        }
+        html += '</tr>';
+      });
+      html += '</table></div>';
+    });
+    html += '</div>';
+  });
+  document.getElementById('resultado').innerHTML = html;
+  toast('Informe cargado', 'ok');
+  return false;
+}
+function esc(s) { var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+</script>
+{% endblock %}
