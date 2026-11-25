@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Buscar{% endblock %}
+{% block page_title %}Búsqueda{% endblock %}
+
+{% block content %}
+<div class="box mb-4">
+  <div class="box-body">
+    <div class="form-row" style="align-items:end">
+      <div style="flex:2;min-width:220px">
+        <label>Buscar texto</label>
+        <input id="q" placeholder="Nombre, NIT, ciudad, sector, puesto, operario..." autocomplete="off">
+      </div>
+      <div>
+        <label>Tipo</label>
+        <select id="tipo">
+          <option value="todo">Todo</option>
+          <option value="empresas">Empresas</option>
+          <option value="puestos">Puestos</option>
+          <option value="operarios">Operarios</option>
+        </select>
+      </div>
+      <div>
+        <label>Ciudad</label>
+        <input id="ciudad" placeholder="Filtrar ciudad">
+      </div>
+      <div>
+        <label>Sector</label>
+        <input id="sector" placeholder="Filtrar sector">
+      </div>
+      <div>
+        <button type="button" class="btn" id="btnBuscar">Buscar</button>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px" id="chips">
+      <span class="chip on" data-tipo="todo">Todo</span>
+      <span class="chip" data-tipo="empresas">Empresas</span>
+      <span class="chip" data-tipo="puestos">Puestos</span>
+      <span class="chip" data-tipo="operarios">Operarios</span>
+    </div>
+  </div>
+</div>
+
+<!-- Lista predeterminada de empresas -->
+<div class="box mb-4" id="empresasBox">
+  <div class="box-header">Empresas registradas <span class="cuenta" style="margin-left:6px">{{ empresas|length }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>ID</th><th>Nombre</th><th>NIT</th><th>Ciudad</th><th>Sector</th></tr>
+      {% for e in empresas %}
+      <tr class="emp-row" data-nombre="{{ e.nombre|lower }}" data-ciudad="{{ e.ciudad|lower }}" data-sector="{{ e.sector|lower }}" data-nit="{{ e.nit|lower }}">
+        <td class="muted">{{ e.id }}</td>
+        <td><b>{{ e.nombre }}</b></td>
+        <td>{{ e.nit or '—' }}</td>
+        <td>{{ e.ciudad or '—' }}</td>
+        <td>{{ e.sector or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="vacio">No hay empresas.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="box hidden" id="resultadosBox">
+  <div class="box-header" id="resCount">Resultados de búsqueda</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Tipo</th><th>ID</th><th>Información</th></tr></thead>
+      <tbody id="resBody"></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var q = document.getElementById('q');
+  var tipo = document.getElementById('tipo');
+  var ciudad = document.getElementById('ciudad');
+  var sector = document.getElementById('sector');
+
+  // Chips
+  document.querySelectorAll('#chips .chip').forEach(function (c) {
+    c.onclick = function () {
+      document.querySelectorAll('#chips .chip').forEach(function (x) { x.classList.remove('on'); });
+      c.classList.add('on');
+      tipo.value = c.getAttribute('data-tipo');
+      filtrarLocal();
+    };
+  });
+
+  // Filtro local de empresas (instantáneo)
+  function filtrarLocal() {
+    var t = (q.value || '').toLowerCase().trim();
+    var ciu = (ciudad.value || '').toLowerCase().trim();
+    var sec = (sector.value || '').toLowerCase().trim();
+    var n = 0;
+    document.querySelectorAll('.emp-row').forEach(function (row) {
+      var ok = true;
+      if (t) {
+        var blob = (row.getAttribute('data-nombre') || '') + ' ' +
+                   (row.getAttribute('data-nit') || '') + ' ' +
+                   (row.getAttribute('data-ciudad') || '') + ' ' +
+                   (row.getAttribute('data-sector') || '');
+        ok = blob.indexOf(t) !== -1;
+      }
+      if (ok && ciu) ok = (row.getAttribute('data-ciudad') || '').indexOf(ciu) !== -1;
+      if (ok && sec) ok = (row.getAttribute('data-sector') || '').indexOf(sec) !== -1;
+      row.style.display = ok ? '' : 'none';
+      if (ok) n++;
+    });
+  }
+
+  q.addEventListener('input', filtrarLocal);
+  ciudad.addEventListener('input', filtrarLocal);
+  sector.addEventListener('input', filtrarLocal);
+
+  // Búsqueda avanzada (API)
+  async function buscarAPI() {
+    var text = (q.value || '').trim();
+    if (!text && !ciudad.value && !sector.value) {
+      document.getElementById('resultadosBox').classList.add('hidden');
+      filtrarLocal();
+      return;
+    }
+    var url = '/api/buscar?q=' + encodeURIComponent(text || ciudad.value || sector.value) +
+              '&tipo=' + encodeURIComponent(tipo.value);
+    var r = await fetch(url);
+    var data = await r.json();
+    // Filtro extra cliente por ciudad/sector en resultados de empresa
+    if (ciudad.value || sector.value) {
+      var ciu = (ciudad.value || '').toLowerCase();
+      var sec = (sector.value || '').toLowerCase();
+      data = data.filter(function (item) {
+        if (item.tipo !== 'empresa') return true;
+        var ok = true;
+        if (ciu && (item.ciudad || '').toLowerCase().indexOf(ciu) === -1) ok = false;
+        if (sec && (item.sector || '').toLowerCase().indexOf(sec) === -1) ok = false;
+        return ok;
+      });
+    }
+    document.getElementById('resultadosBox').classList.remove('hidden');
+    document.getElementById('resCount').textContent = data.length + ' resultado(s)';
+    var body = document.getElementById('resBody');
+    if (!data.length) {
+      body.innerHTML = '<tr><td colspan="3" class="vacio">Sin resultados. Prueba otro texto o limpia filtros.</td></tr>';
+      return;
+    }
+    body.innerHTML = data.map(function (r) {
+      var info = '';
+      if (r.tipo === 'empresa') info = '<b>' + esc(r.nombre) + '</b> · ' + esc(r.ciudad || '') + (r.sector ? ' · ' + esc(r.sector) : '');
+      else if (r.tipo === 'puesto') info = '<b>' + esc((r.numero_puesto ? r.numero_puesto + ' ' : '') + r.nombre) + '</b> · ' + esc(r.empresa || '');
+      else if (r.tipo === 'operario') info = '<b>' + esc(r.nombre) + '</b> · ' + esc((r.cargo || '') + ' · ' + (r.empresa || ''));
+      return '<tr><td><span class="badge-tipo">' + r.tipo + '</span></td><td class="muted">' + r.id + '</td><td>' + info + '</td></tr>';
+    }).join('');
+  }
+
+  document.getElementById('btnBuscar').onclick = buscarAPI;
+  q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); buscarAPI(); } });
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+})();
+</script>
+{% endblock %}

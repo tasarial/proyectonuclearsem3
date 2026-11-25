@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Evaluación #{{ ev.id }}{% endblock %}
+{% block page_title %}Evaluación #{{ ev.id }} · {{ ev.empresa }}{% endblock %}
+{% block content %}
+<div class="hero-strip">
+  <div><h2>{{ ev.puesto or 'Puesto sin especificar' }}</h2><p>Evaluado el {{ ev.fecha_evaluacion[:16] }} por {{ ev.visitante }}{% if ev.ia_usada == '1' %} · con asistente de IA (revisado){% endif %}</p></div>
+  <div class="flex gap-2 wrap">
+    <a class="btn-sec" href="{{ url_for('evaluaciones') }}">← Volver</a>
+    {% if puede_dl %}<a class="btn" href="{{ url_for('evaluacion_pdf', eid=ev.id) }}">Descargar informe PDF</a>{% endif %}
+  </div>
+</div>
+
+<div class="box"><div class="box-body">
+  <div class="res-top">
+    <div class="sem big" role="img" aria-label="Semáforo {{ ev.nivel }}">{% for n in ['Rojo','Amarillo','Verde'] %}<i class="{{ n }}{{ ' on' if ev.nivel == n }}"></i>{% endfor %}</div>
+    <div><div class="score s-{{ ev.nivel }}">{{ ev.puntaje_final }}<small> / 7</small></div>
+      <div class="lvl s-{{ ev.nivel }}">{{ {'Verde':'Aceptable','Amarillo':'Requiere revisión y mejoras','Rojo':'Intervención prioritaria'}[ev.nivel] }}</div>
+      <p>{{ ev.accion_sugerida }}</p></div>
+  </div>
+  <div class="parts">
+    {% for l, v in [('Brazo', ev.brazo), ('Antebrazo', ev.antebrazo), ('Muñeca', ev.muneca), ('Cuello', ev.cuello), ('Tronco', ev.tronco), ('Piernas', ev.piernas), ('Grupo A', ev.puntos_a), ('Grupo B', ev.puntos_b)] %}<div><span>{{ l }}</span><b>{{ v }}</b></div>{% endfor %}
+  </div>
+</div></div>
+
+<div class="grid2">
+  <div class="box"><div class="box-header">Trabajador evaluado</div><div class="box-body">
+    {% if trab %}<dl class="dl">
+      <dt>Nombre</dt><dd>{{ trab.nombre }}</dd><dt>Cargo</dt><dd>{{ trab.cargo or '—' }}</dd><dt>Género</dt><dd>{{ trab.genero or '—' }}</dd>
+      <dt>Edad</dt><dd>{{ trab.edad if trab.edad is not none else '—' }}</dd><dt>En la empresa</dt><dd>{{ trab.antiguedad }}</dd>
+      <dt>Jornada</dt><dd>{{ trab.horas_jornada if trab.horas_jornada else '—' }} h/día</dd>
+      <dt>Consentimiento</dt><dd>{{ 'Registrado ' ~ trab.consentimiento_fecha if trab.consentimiento else 'No registrado' }}</dd></dl>
+    {% else %}<p class="muted">Sin trabajador vinculado.</p>{% endif %}
+  </div></div>
+  <div class="box"><div class="box-header">Condiciones del puesto</div><div class="box-body">
+    {% if cond %}<dl class="dl">{% for k, v in cond.items() %}<dt>{{ k.replace('_', ' ')|capitalize }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>{% else %}<p class="muted">No registradas.</p>{% endif %}
+  </div></div>
+</div>
+
+{% if compat %}
+<div class="box"><div class="box-header">Compatibilidad puesto–trabajador · <span class="s-{{ compat.global }}">{{ compat.global }}</span></div><div class="box-body">
+  <table><tr><th>Factor</th><th>Estado</th><th>Detalle</th></tr>
+  {% for f in compat.factores %}<tr><td>{{ f.factor }}</td><td><span class="dotc d-{{ f.estado }}"></span> {{ f.estado }}</td><td class="muted">{{ f.detalle }}</td></tr>{% endfor %}</table>
+</div></div>
+{% endif %}
+
+{% if fotos %}
+<div class="box"><div class="box-header">Fotos y ángulos</div><div class="box-body thumbs-lg">
+  {% for f in fotos %}<figure><img src="{{ f.url }}" alt="Foto {{ f.vista }}"><figcaption>{{ f.vista }} · {% for k, v in f.angulos.items() %}{{ k }} {{ v|round|int }}° {% endfor %}</figcaption></figure>{% endfor %}
+</div></div>
+{% endif %}
+
+<div class="box"><div class="box-header">Recomendaciones</div><div class="box-body">
+  <textarea id="recs" rows="9" maxlength="4000">{{ ev.recomendaciones }}</textarea>
+  <div class="form-actions"><button class="btn" id="btnRecs">Guardar cambios</button></div>
+</div></div>
+{% endblock %}
+{% block scripts %}<script>
+document.getElementById('btnRecs').onclick = async function () {
+  var r = await api('/api/evaluacion/{{ ev.id }}/recomendaciones', { method: 'PUT', body: { recomendaciones: document.getElementById('recs').value } });
+  if (r.ok) toast(r.data.msg, 'ok');
+};</script>{% endblock %}

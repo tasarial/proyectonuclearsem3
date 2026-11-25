@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Evaluaciones RULA{% endblock %}
+{% block page_title %}Evaluaciones ergonómicas{% endblock %}
+
+{% block content %}
+<div class="hero-strip">
+  <div>
+    <h2>Evaluación postural RULA</h2>
+    <p>Registra al trabajador, su consentimiento, las condiciones del puesto y fotos con ángulos. El asistente propone los pasos y valores; tú los corriges.</p>
+  </div>
+  <a class="btn" href="{{ url_for('evaluacion_nueva') }}">+ Nueva evaluación</a>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="n">{{ evaluaciones|length }}</div><div class="l">Evaluaciones</div></div>
+  <div class="stat"><div class="n verde">{{ evaluaciones|selectattr('nivel','equalto','Verde')|list|length }}</div><div class="l">Verde</div></div>
+  <div class="stat"><div class="n oro">{{ evaluaciones|selectattr('nivel','equalto','Amarillo')|list|length }}</div><div class="l">Amarillo</div></div>
+  <div class="stat"><div class="n rojo">{{ evaluaciones|selectattr('nivel','equalto','Rojo')|list|length }}</div><div class="l">Rojo</div></div>
+</div>
+
+<div class="box">
+  <div class="box-header">Últimas evaluaciones</div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Semáforo</th><th>Empresa</th><th>Puesto</th><th>Trabajador</th><th>Puntaje</th><th>Evaluador</th><th>Fecha</th><th></th></tr>
+      {% for e in evaluaciones %}
+      <tr>
+        <td><span class="mini-sem s-{{ e.nivel }}" title="{{ e.nivel }}"><i></i><i></i><i></i></span></td>
+        <td>{{ e.empresa }}</td><td>{{ e.puesto }}</td><td>{{ e.trabajador }}</td>
+        <td><b>{{ e.puntaje_final }}</b> <span class="muted">/ 7</span></td>
+        <td>{{ e.visitante }}</td><td class="muted">{{ e.fecha }}</td>
+        <td><a class="btn-sec btn-sm" href="{{ url_for('evaluacion_detalle', eid=e.id) }}">Ver informe</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="vacio">Aún no hay evaluaciones. Pulsa «Nueva evaluación» para empezar.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}
