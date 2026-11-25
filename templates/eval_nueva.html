@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Nueva evaluación{% endblock %}
+{% block page_title %}Nueva evaluación ergonómica{% endblock %}
+
+{% block content %}
+<nav class="wiz" id="wiz" aria-label="Pasos">
+  <button type="button" data-s="1" class="on"><b>1</b><span>Puesto y trabajador</span></button>
+  <button type="button" data-s="2"><b>2</b><span>Condiciones</span></button>
+  <button type="button" data-s="3"><b>3</b><span>Fotos y ángulos</span></button>
+  <button type="button" data-s="4"><b>4</b><span>Mediciones RULA</span></button>
+  <button type="button" data-s="5"><b>5</b><span>Resultado</span></button>
+</nav>
+
+<!-- ============ PASO 1 ============ -->
+<section class="wstep" id="s1">
+  <div class="box"><div class="box-header">Empresa, puesto y trabajador</div><div class="box-body">
+    <div class="form-row">
+      <div><label>Empresa *</label>
+        <select id="empSel"><option value="">— Selecciona —</option>{% for e in empresas %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}</select></div>
+      <div><label>Puesto de trabajo</label><select id="puestoSel" disabled><option value="">— Selecciona primero la empresa —</option></select></div>
+      <div><label>Trabajador evaluado *</label><select id="trabSel" disabled><option value="">— Selecciona primero la empresa —</option></select></div>
+    </div>
+    <div class="muted" style="font-size:12.5px">¿El puesto no aparece? Créalo en <a href="{{ url_for('clientes') }}">Clientes</a> (empresa → sede → salón → puesto).</div>
+  </div></div>
+
+  <div class="box"><div class="box-header">Perfil del trabajador <span class="muted" style="font-weight:400">· sirve para evaluar la compatibilidad con el puesto</span>
+      <button type="button" class="btn-sec btn-sm" id="btnNuevoTrab" style="margin-left:auto">+ Nuevo trabajador</button></div>
+    <div class="box-body">
+      <form id="trabForm">
+        <div class="form-row">
+          <div><label>Nombre completo *</label><input name="nombre" maxlength="{{ LIM.nombre if LIM.nombre else 100 }}" required></div>
+          <div><label>Documento</label><input name="documento" maxlength="30"></div>
+          <div><label>Cargo</label><input name="cargo" maxlength="80"></div>
+          <div><label>Género</label><select name="genero"><option value="">—</option>{% for g in GENEROS %}<option>{{ g }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Fecha de nacimiento</label><input type="date" name="fecha_nacimiento" max="{{ now_date }}"></div>
+          <div><label>Tiempo en la empresa (meses)</label><input type="number" name="antiguedad_meses" min="0" max="720"></div>
+          <div><label>Horas de jornada al día</label><input type="number" name="horas_jornada" min="1" max="16" step="0.5" placeholder="8"></div>
+          <div><label>Lateralidad</label><select name="lateralidad"><option value="">—</option>{% for g in LATERALIDAD %}<option>{{ g }}</option>{% endfor %}</select></div>
+          <div><label>Estatura (cm)</label><input type="number" name="estatura_cm" min="100" max="230"></div>
+        </div>
+        <div class="form-row"><div style="grid-column:1/-1"><label>Antecedentes o molestias (opcional, dato sensible)</label>
+          <input name="antecedentes" maxlength="300" placeholder="Ej. dolor lumbar ocasional, túnel carpiano diagnosticado…"></div></div>
+        <div class="form-actions"><button class="btn" type="submit" id="btnGuardarTrab">Guardar trabajador</button><span class="muted" id="trabEstado"></span></div>
+      </form>
+    </div></div>
+
+  <div class="box" id="consBox"><div class="box-header">Consentimiento informado</div><div class="box-body">
+    <div id="consEstado" class="note warn">Selecciona o crea un trabajador para registrar su consentimiento.</div>
+    <div id="consForm" class="hidden">
+      <div class="consent-text" id="consTexto"></div>
+      <label class="chk"><input type="checkbox" id="consAcepta"> El trabajador leyó y acepta este consentimiento.</label>
+      <div class="form-row"><div><label>Nombre de quien firma *</label><input id="consNombre" maxlength="100" placeholder="Nombre completo del trabajador"></div></div>
+      <button type="button" class="btn" id="btnConsent">Registrar consentimiento</button>
+      <p class="muted" style="font-size:12px;margin-top:8px">Sin consentimiento no se pueden subir ni analizar fotos, ni guardar la evaluación vinculada al trabajador.</p>
+    </div>
+  </div></div>
+  <div class="wnav"><span></span><button type="button" class="btn" data-go="2">Siguiente · Condiciones →</button></div>
+</section>
+
+<!-- ============ PASO 2 ============ -->
+<section class="wstep hidden" id="s2">
+  <div class="box"><div class="box-header">Condiciones del puesto y del entorno</div><div class="box-body">
+    <div class="split">
+      <div>
+        <p class="muted" style="margin-bottom:10px">Describe cómo es el puesto. Esto alimenta las sugerencias del asistente y el informe.</p>
+        <form id="condForm" class="cond-grid"></form>
+        <div class="form-actions"><button type="button" class="btn-sec" id="btnGuardarCond">Guardar en el puesto</button><span class="muted" id="condEstado"></span></div>
+      </div>
+      <figure class="illus" aria-label="Puesto ideal">
+        <svg viewBox="0 0 320 260" role="img">
+          <rect x="0" y="236" width="320" height="4" fill="#d9d0f2"/>
+          <rect x="196" y="120" width="104" height="8" rx="2" fill="#b7a9e6"/><rect x="290" y="128" width="6" height="108" fill="#b7a9e6"/>
+          <rect x="222" y="70" width="8" height="50" fill="#8b7bd0"/><rect x="212" y="40" width="46" height="34" rx="3" fill="#6a4bc0"/>
+          <circle cx="110" cy="44" r="14" fill="#cfc7e8"/>
+          <path d="M108 60 L104 130 L148 130 L156 194 L148 232" fill="none" stroke="#9c8bdc" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M112 74 L150 98 L200 112" fill="none" stroke="#9c8bdc" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="70" y="132" width="86" height="8" rx="3" fill="#6a4bc0"/><rect x="88" y="140" width="6" height="80" fill="#6a4bc0"/><rect x="62" y="70" width="8" height="66" rx="3" fill="#6a4bc0"/>
+          <path d="M104 130 h22 M104 130 v-18" stroke="#2e9d5b" stroke-width="2.2" fill="none"/><text x="130" y="122" font-size="11" font-weight="700" fill="#2e9d5b">90°</text>
+          <path d="M148 130 v30 h-22" stroke="#2e9d5b" stroke-width="2.2" fill="none"/><text x="160" y="152" font-size="11" font-weight="700" fill="#2e9d5b">90°</text>
+          <path d="M138 60 L212 57" stroke="#e3a21a" stroke-width="1.6" stroke-dasharray="4 3"/><text x="150" y="52" font-size="10" fill="#a8740a">mirada a la pantalla</text>
+          <text x="196" y="110" font-size="10" fill="#6b6486">50–70 cm</text>
+        </svg>
+        <figcaption>Postura de referencia: espalda apoyada, codos y rodillas ≈ 90°, pantalla a la altura de los ojos, 50–70 cm, pies apoyados.</figcaption>
+      </figure>
+    </div>
+  </div></div>
+  <div class="wnav"><button type="button" class="btn-sec" data-go="1">← Atrás</button><button type="button" class="btn" data-go="3">Siguiente · Fotos →</button></div>
+</section>
+
+<!-- ============ PASO 3 ============ -->
+<section class="wstep hidden" id="s3">
+  <div class="box"><div class="box-header">Fotos del puesto y análisis de ángulos</div><div class="box-body">
+    <div id="fotoBloqueo" class="note warn hidden">Para subir fotos primero selecciona al trabajador y registra su consentimiento (paso 1).</div>
+    <div id="fotoPanel">
+      <div class="flex gap-2 wrap" style="align-items:end;margin-bottom:12px">
+        <div><label>Vista</label><select id="fVista"><option>Lateral</option><option>Frontal</option><option>Posterior</option></select></div>
+        <div><label>Foto (JPG, PNG o WEBP · máx. 6 MB)</label><input type="file" id="fArchivo" accept="image/jpeg,image/png,image/webp"></div>
+        <button type="button" class="btn" id="btnSubir">Subir foto</button>
+      </div>
+      <p class="muted" style="font-size:12.5px;margin-bottom:10px">Consejo: toma la foto de lado, con la cámara a la altura de la cadera y el cuerpo completo visible. Lo ideal son 2 o 3 momentos de la jornada.</p>
+      <div class="thumbs" id="thumbs"></div>
+
+      <div id="editor" class="hidden">
+        <div class="ed-bar">
+          <div class="chips" id="ptChips"></div>
+          <div class="flex gap-2 wrap" style="align-items:center">
+            <label style="margin:0">La persona mira hacia la</label>
+            <select id="mira" style="width:auto"><option>Derecha</option><option>Izquierda</option></select>
+            <button type="button" class="btn-sec btn-sm" id="btnIA">✨ Sugerir con IA</button>
+            <button type="button" class="btn-sec btn-sm" id="btnLimpiar">Borrar puntos</button>
+          </div>
+        </div>
+        <div class="ed-main">
+          <div class="canvas-wrap"><canvas id="cv"></canvas></div>
+          <div class="ed-side">
+            <div class="angbox" id="angBox"></div>
+            <div class="form-actions" style="flex-direction:column;align-items:stretch;gap:8px">
+              <button type="button" class="btn" id="btnAplicar">Usar estos ángulos en la medición</button>
+              <button type="button" class="btn-sec" id="btnGuardarFoto">Guardar puntos de la foto</button>
+              <button type="button" class="btn-danger btn-sm" id="btnBorrarFoto">Eliminar foto</button>
+            </div>
+            <p class="muted" style="font-size:12px" id="edAyuda">Elige un punto y haz clic en la foto para colocarlo. Arrastra los puntos para corregirlos.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="wnav"><button type="button" class="btn-sec" data-go="2">← Atrás</button><button type="button" class="btn" data-go="4">Siguiente · Mediciones →</button></div>
+</section>
+
+<!-- ============ PASO 4 ============ -->
+<section class="wstep hidden" id="s4">
+  <div class="box"><div class="box-header">Asistente de evaluación</div><div class="box-body">
+    <div class="flex gap-2 wrap" style="align-items:center">
+      <button type="button" class="btn" id="btnSugerir">✨ Sugerir pasos y valores</button>
+      <span class="muted" id="sugEstado">El asistente propone una postura de partida según las condiciones del puesto. Los campos sugeridos se marcan y puedes cambiarlos.</span>
+    </div>
+    <div id="sugOut" class="hidden" style="margin-top:12px"></div>
+  </div></div>
+
+  <form id="rulaForm" autocomplete="off">
+  <div class="box"><div class="box-header">Datos generales</div><div class="box-body">
+    <div class="form-row">
+      <div><label>Evaluador *</label><input name="visitante" required maxlength="120" value="{{ current_user.nombre_completo }}"></div>
+      <div><label>Lado del cuerpo</label><select name="lado"><option>Derecho</option><option>Izquierdo</option></select></div>
+      <div><label>Postura estudiada</label><input name="postura" maxlength="150" placeholder="Ej. Digitación frente al computador"></div>
+      <div><label>Criterio de elección</label><select name="criterio"><option>Postura inadecuada</option><option>Tiempo de exposición</option><option>Las dos</option></select></div>
+    </div></div></div>
+
+  <div class="box"><div class="box-header">Grupo A · Miembros superiores</div><div class="box-body">
+    <div class="figs"><div class="fig" data-kind="brazo" data-input="brazo_angulo"></div><div class="fig" data-kind="antebrazo" data-input="antebrazo_angulo"></div><div class="fig" data-kind="muneca" data-input="muneca_angulo"></div></div>
+    <div class="form-row">
+      <div><label>Brazo · flexión (°)</label><input type="number" name="brazo_angulo" value="20" step="1"></div>
+      <div class="checks"><label><input type="checkbox" name="brazo_extension"> Extensión</label><label><input type="checkbox" name="hombro_elevado"> Hombro elevado / rotado</label><label><input type="checkbox" name="brazo_abducido"> Brazo abducido</label><label><input type="checkbox" name="brazo_apoyo"> Punto de apoyo (−1)</label></div>
+      <div><label>Antebrazo · ángulo (°)</label><input type="number" name="antebrazo_angulo" value="90" step="1"></div>
+      <div class="checks"><label><input type="checkbox" name="antebrazo_cruza"> Cruza línea media</label><label><input type="checkbox" name="antebrazo_lado"> Trabaja a un lado</label></div>
+    </div>
+    <div class="form-row">
+      <div><label>Muñeca · ángulo (°)</label><input type="number" name="muneca_angulo" value="0" step="1"></div>
+      <div class="checks"><label><input type="checkbox" name="muneca_desviacion"> Desviación radial/cubital</label><label><input type="checkbox" name="giro_extremo"> Giro de muñeca extremo</label></div>
+    </div>
+  </div></div>
+
+  <div class="box"><div class="box-header">Grupo B · Cuello, tronco y piernas</div><div class="box-body">
+    <div class="figs"><div class="fig" data-kind="cuello" data-input="cuello_angulo"></div><div class="fig" data-kind="tronco" data-input="tronco_angulo"></div><div class="fig" data-kind="piernas"></div></div>
+    <div class="form-row">
+      <div><label>Cuello · ángulo (°)</label><input type="number" name="cuello_angulo" value="0" step="1"></div>
+      <div class="checks"><label><input type="checkbox" name="cuello_extension"> Extensión de cuello</label><label><input type="checkbox" name="cuello_rotado"> Cabeza rotada</label><label><input type="checkbox" name="cuello_inclinado"> Cabeza inclinada</label></div>
+      <div><label>Tronco · ángulo (°)</label><input type="number" name="tronco_angulo" value="0" step="1"></div>
+      <div class="checks"><label><input type="checkbox" name="tronco_rotado"> Tronco rotado</label><label><input type="checkbox" name="tronco_inclinado"> Tronco inclinado</label><label><input type="checkbox" name="sentado_bien"> Sentado bien apoyado</label></div>
+    </div>
+  </div></div>
+
+  <div class="box"><div class="box-header">Actividad y carga</div><div class="box-body">
+    <div class="figs"><div class="fig" data-kind="carga" data-input="carga_kg"></div></div>
+    <div class="form-row">
+      <div class="checks"><label><input type="checkbox" name="pies_apoyados" checked> Pies bien apoyados</label><label><input type="checkbox" name="peso_repartido" checked> Peso repartido por igual</label></div>
+      <div class="checks"><label><input type="checkbox" name="actividad_estatica"> Postura estática (&gt;1 min)</label><label><input type="checkbox" name="actividad_repetitiva"> Repetitiva (&gt;4/min)</label></div>
+      <div><label>Carga / fuerza (kg)</label><input type="number" name="carga_kg" value="0" min="0" step="0.5"></div>
+      <div class="checks"><label><input type="checkbox" name="carga_estatica_rep"> Carga estática o repetitiva</label><label><input type="checkbox" name="golpes"> Golpes / fuerzas bruscas</label></div>
+    </div>
+  </div></div>
+  </form>
+  <div class="wnav"><button type="button" class="btn-sec" data-go="3">← Atrás</button><button type="button" class="btn" data-go="5">Calcular resultado →</button></div>
+</section>
+
+<!-- ============ PASO 5 ============ -->
+<section class="wstep hidden" id="s5">
+  <div class="box"><div class="box-header">Resultado y semáforo</div><div class="box-body" id="resBox"><p class="muted">Calculando…</p></div></div>
+  <div class="box hidden" id="compBox"><div class="box-header">Compatibilidad puesto–trabajador</div><div class="box-body" id="compBody"></div></div>
+  <div class="box"><div class="box-header">Recomendaciones <span class="muted" style="font-weight:400">· generadas por el asistente, edítalas libremente</span>
+      <button type="button" class="btn-sec btn-sm" id="btnRegen" style="margin-left:auto">Regenerar</button></div>
+    <div class="box-body"><textarea id="recs" rows="9" maxlength="4000"></textarea>
+      <label class="mt-2">Observaciones del evaluador</label><input id="obs" maxlength="500" placeholder="Opcional">
+    </div></div>
+  <div class="wnav"><button type="button" class="btn-sec" data-go="4">← Ajustar mediciones</button><button type="button" class="btn" id="btnGuardarEval">Guardar evaluación e informe</button></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>var CAMPOS = {{ CAMPOS|tojson }};</script>
+<script src="{{ url_for('static', filename='js/rula_figs.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_wizard.js') }}"></script>
+{% endblock %}

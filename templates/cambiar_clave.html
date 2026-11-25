@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Cambiar contraseña{% endblock %}
+{% block auth_content %}{% endblock %}
+{% block content %}
+<div class="box" style="max-width:480px;margin:40px auto">
+  <div class="box-header">Define tu contraseña</div>
+  <div class="box-body">
+    <p class="muted" style="margin-bottom:14px">Ingresaste con una <b>contraseña temporal</b>. Por seguridad, elige una propia para continuar.</p>
+    <form id="cc">
+      <label>Contraseña temporal (la actual)</label>
+      <input type="password" name="actual" required autocomplete="current-password">
+      <label class="mt-2">Nueva contraseña</label>
+      <input type="password" name="nueva" required minlength="8" autocomplete="new-password">
+      <label class="mt-2">Repite la nueva contraseña</label>
+      <input type="password" name="rep" required minlength="8" autocomplete="new-password">
+      <p class="muted" style="font-size:12px;margin:8px 0 14px">Mínimo 8 caracteres, con letras y números.</p>
+      <button class="btn" type="submit">Guardar y continuar</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('cc').onsubmit = async function (e) {
+  e.preventDefault(); var f = e.target;
+  if (f.nueva.value !== f.rep.value) { toast('Las contraseñas nuevas no coinciden.', 'error'); return; }
+  var r = await api('/api/cambiar-clave', { method: 'POST', body: { actual: f.actual.value, nueva: f.nueva.value } });
+  if (r.ok) { toast(r.data.msg, 'ok'); setTimeout(function () { location.href = r.data.redirect; }, 500); }
+};
+</script>
+{% endblock %}
