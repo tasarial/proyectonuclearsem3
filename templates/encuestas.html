@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Encuestas{% endblock %}
+{% block page_title %}Encuestas del puesto y sus condiciones{% endblock %}
+{% block content %}
+<div class="box"><div class="box-body">
+  <div class="form-row">
+    <div><label>Empresa *</label><select id="emp"><option value="">— Selecciona —</option>{% for e in empresas %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}</select></div>
+    <div><label>Puesto</label><select id="pue" disabled><option value="">—</option></select></div>
+    <div><label>Trabajador (opcional)</label><select id="tra" disabled><option value="">Anónimo</option></select></div>
+    <div><label>Tipo de encuesta</label><select id="tipo"><option value="nordico">Molestias musculoesqueléticas (Nórdico)</option><option value="percepcion">Percepción del puesto y condiciones</option></select></div>
+  </div>
+</div></div>
+<div class="box"><div class="box-header" id="encTitulo">Encuesta</div><div class="box-body">
+  <form id="encForm"></form>
+  <label class="mt-2">Comentario</label><input id="com" maxlength="500" placeholder="Opcional">
+  <div class="form-actions"><button class="btn" id="btnEnv">Guardar encuesta</button></div>
+</div></div>
+<div class="box"><div class="box-header">Resultados acumulados del puesto / empresa</div><div class="box-body" id="resumen"><p class="muted">Selecciona una empresa.</p></div></div>
+{% endblock %}
+{% block scripts %}<script>
+var ZONAS = {{ ZONAS|tojson }}, ITEMS = {{ ITEMS|tojson }};
+var $ = function (i) { return document.getElementById(i); };
+function build() {
+  var f = $('encForm');
+  if ($('tipo').value === 'nordico') {
+    $('encTitulo').textContent = 'Cuestionario Nórdico simplificado · ¿Has sentido molestias en los últimos 12 meses?';
+    var lv = ['Leve', 'Leve-moderada', 'Moderada', 'Fuerte', 'Muy fuerte'];
+    f.innerHTML = '<div class="legend-int"><span>Marca «Sí» si hubo molestia y elige su intensidad:</span><span>1 = leve</span><span>5 = muy fuerte</span></div>' +
+      '<table class="nord"><tr><th>Zona del cuerpo</th><th>¿Molestia?</th><th>Intensidad</th></tr>' + ZONAS.map(function (z, i) {
+      return '<tr><td>' + esc(z) + '</td><td><label class="sw"><input type="checkbox" data-z="' + i + '"><span class="sl"></span></label></td>' +
+        '<td><input type="hidden" data-i="' + i + '" value="0"><div class="pills" data-p="' + i + '">' +
+        [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" class="pill" data-v="' + n + '" disabled title="' + lv[n - 1] + '">' + n + '</button>'; }).join('') +
+        '<span class="pill-lbl" id="iv' + i + '"></span></div></td></tr>'; }).join('') + '</table>';
+    function setInt(i, v) {
+      f.querySelector('[data-i="' + i + '"]').value = v;
+      f.querySelectorAll('[data-p="' + i + '"] .pill').forEach(function (p) { p.classList.toggle('on', +p.dataset.v === v); });
+      $('iv' + i).textContent = v ? lv[v - 1] : '';
+    }
+    f.querySelectorAll('[data-z]').forEach(function (c) {
+      c.onchange = function () {
+        var i = c.dataset.z;
+        f.querySelectorAll('[data-p="' + i + '"] .pill').forEach(function (p) { p.disabled = !c.checked; });
+        setInt(i, c.checked ? 1 : 0);
+      };
+    });
+    f.querySelectorAll('.pill').forEach(function (p) { p.onclick = function () { setInt(p.parentNode.dataset.p, +p.dataset.v); }; });
+  } else {
+    $('encTitulo').textContent = 'Percepción del puesto · 1 = muy malo, 5 = muy bueno';
+    f.innerHTML = '<table>' + ITEMS.map(function (z, i) { return '<tr><td>' + esc(z) + '</td><td>' + [1, 2, 3, 4, 5].map(function (n) { return '<label style="margin-right:10px"><input type="radio" name="p' + i + '" value="' + n + '"> ' + n + '</label>'; }).join('') + '</td></tr>'; }).join('') + '</table>';
+  }
+}
+$('tipo').onchange = build; build();
+$('emp').onchange = async function () {
+  var e = this.value; $('pue').disabled = $('tra').disabled = !e; if (!e) return;
+  var p = await (await fetch('/api/empresa/' + e + '/puestos')).json();
+  $('pue').innerHTML = '<option value="">—</option>' + p.map(function (x) { return '<option value="' + x.id + '">' + esc(x.etiqueta) + '</option>'; }).join('');
+  var t = await (await fetch('/api/trabajadores?empresa_id=' + e)).json();
+  $('tra').innerHTML = '<option value="">Anónimo</option>' + t.trabajadores.map(function (x) { return '<option value="' + x.id + '">' + esc(x.nombre) + (x.consentimiento ? ' ✓' : '') + '</option>'; }).join('');
+  resumen();
+};
+$('pue').onchange = resumen;
+async function resumen() {
+  if (!$('emp').value) return;
+  var r = await (await fetch('/api/encuestas?empresa_id=' + $('emp').value + ($('pue').value ? '&puesto_id=' + $('pue').value : ''))).json(), s = r.resumen, h = '';
+  var z = s.nordico.zonas, k = Object.keys(z);
+  h += '<h4>Molestias (Nórdico) · ' + s.nordico.n + ' encuestas</h4>' + (k.length ? '<table><tr><th>Zona</th><th>Con molestia</th><th>Intensidad media</th></tr>' + k.map(function (q) { return '<tr><td>' + esc(q) + '</td><td>' + z[q].con_molestia + ' de ' + s.nordico.n + '</td><td>' + z[q].intensidad_media + '</td></tr>'; }).join('') + '</table>' : '<p class="muted">Sin datos.</p>');
+  var it = s.percepcion.items, ik = Object.keys(it);
+  h += '<h4 style="margin-top:14px">Percepción · ' + s.percepcion.n + ' encuestas (promedio 1–5)</h4>' + (ik.length ? '<table>' + ik.map(function (q) { var v = it[q]; return '<tr><td>' + esc(q) + '</td><td><div class="bar"><i style="width:' + v * 20 + '%;background:' + (v < 2.5 ? '#d64533' : v < 3.5 ? '#e3a21a' : '#2e9d5b') + '"></i></div></td><td><b>' + v + '</b></td></tr>'; }).join('') + '</table>' : '<p class="muted">Sin datos.</p>');
+  $('resumen').innerHTML = h;
+}
+$('btnEnv').onclick = async function () {
+  if (!$('emp').value) { toast('Selecciona la empresa.', 'warning'); return; }
+  var resp = {};
+  if ($('tipo').value === 'nordico') ZONAS.forEach(function (z, i) { var c = document.querySelector('[data-z="' + i + '"]'), r = document.querySelector('[data-i="' + i + '"]'); resp[z] = { molestia: c.checked, intensidad: +r.value }; });
+  else ITEMS.forEach(function (z, i) { var c = document.querySelector('[name="p' + i + '"]:checked'); if (c) resp[z] = +c.value; });
+  var r = await api('/api/encuesta', { method: 'POST', body: { tipo: $('tipo').value, empresa_id: +$('emp').value, puesto_id: $('pue').value || null, trabajador_id: $('tra').value || null, respuestas: resp, comentario: $('com').value } });
+  if (r.ok) { toast(r.data.msg, 'ok'); $('com').value = ''; build(); resumen(); }
+};
+</script>{% endblock %}

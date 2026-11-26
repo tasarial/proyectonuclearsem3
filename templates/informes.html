@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Informes{% endblock %}
+{% block page_title %}Informes por empresa{% endblock %}
+
+{% block content %}
+<div class="box mb-4">
+  <div class="box-body">
+    <div class="form-row" style="align-items:end">
+      <div style="flex:1;min-width:220px">
+        <label>Empresa</label>
+        <select id="emp">
+          <option value="">-- Seleccione empresa --</option>
+          {% for e in empresas %}
+          <option value="{{ e.id }}">{{ e.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <button type="button" class="btn" id="btnVer">Ver informe</button>
+      </div>
+      {% if can('inf_dl') %}
+      <div>
+        <a class="btn-sec" id="btnPdf" href="#" style="pointer-events:none;opacity:.5">Descargar PDF</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div id="informe" class="hidden">
+  <div class="stats" style="margin-bottom:18px" id="stats"></div>
+  <div class="box">
+    <div class="box-header" id="infTitle">Informe</div>
+    <div class="box-body">
+      <p id="infResumen" class="muted" style="margin-bottom:14px"></p>
+      <div class="table-wrap scr">
+        <table>
+          <thead>
+            <tr>
+              <th>Puesto</th><th>Sede</th><th>Salón</th><th>Lado</th>
+              <th>Final</th><th>Nivel</th><th>Visitante</th><th>Fecha</th><th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="infBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var emp = document.getElementById('emp');
+  var btnPdf = document.getElementById('btnPdf');
+  var q0 = new URLSearchParams(location.search).get('empresa');
+
+  document.getElementById('btnVer').onclick = async function () {
+    if (!emp.value) { toast('Seleccione una empresa.', 'warning'); return; }
+    var r = await fetch('/api/informe/' + emp.value);
+    var data = await r.json();
+    if (!data.ok) { toast(data.msg || 'Error', 'error'); return; }
+    document.getElementById('informe').classList.remove('hidden');
+    document.getElementById('infTitle').textContent = 'Informe de evaluaciones · ' + data.empresa.nombre;
+    var t = data.totales;
+    document.getElementById('stats').innerHTML =
+      '<div class="stat"><div class="n">' + t.evaluaciones + '</div><div class="l">Evaluaciones</div></div>' +
+      '<div class="stat"><div class="n" style="color:var(--bajo)">' + t.verde + '</div><div class="l">Verde</div></div>' +
+      '<div class="stat"><div class="n" style="color:var(--medio)">' + t.amarillo + '</div><div class="l">Amarillo</div></div>' +
+      '<div class="stat"><div class="n" style="color:var(--grave)">' + t.rojo + '</div><div class="l">Rojo</div></div>' +
+      '<div class="stat"><div class="n">' + t.promedio + '</div><div class="l">Puntaje promedio</div></div>';
+    document.getElementById('infResumen').textContent =
+      data.empresa.nombre + (data.empresa.nit ? ' · NIT ' + data.empresa.nit : '') +
+      ' · ' + t.sedes + ' sedes · ' + t.puestos + ' puestos registrados.';
+    var body = document.getElementById('infBody');
+    if (!data.evaluaciones.length) {
+      body.innerHTML = '<tr><td colspan="9" class="vacio">Sin evaluaciones para esta empresa.</td></tr>';
+    } else {
+      body.innerHTML = data.evaluaciones.map(function (e) {
+        var badge = e.nivel === 'Verde' ? 'badge-g' : (e.nivel === 'Amarillo' ? 'badge-y' : 'badge-r');
+        return '<tr>' +
+          '<td>' + esc(e.puesto) + '</td><td>' + esc(e.sede) + '</td><td>' + esc(e.salon) + '</td>' +
+          '<td>' + esc(e.lado) + '</td><td><b>' + e.puntaje_final + '</b></td>' +
+          '<td><span class="' + badge + '">' + e.nivel + '</span></td>' +
+          '<td>' + esc(e.visitante) + '</td><td class="muted">' + esc(e.fecha) + '</td>' +
+          '<td class="muted">' + esc(e.accion) + '</td></tr>';
+      }).join('');
+    }
+    if (btnPdf) {
+      btnPdf.href = '/informe/' + emp.value + '/pdf';
+      btnPdf.style.pointerEvents = 'auto';
+      btnPdf.style.opacity = '1';
+    }
+  };
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+  // Cliente con una sola empresa: se abre sola
+  if (emp.options.length === 2) { emp.selectedIndex = 1; document.getElementById('btnVer').click(); }
+})();
+</script>
+{% endblock %}
