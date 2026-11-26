@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}Calendario{% endblock %}
+{% block page_title %}Calendario de visitas{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <button type="button" class="btn-sec" id="btnPrev">←</button>
+    <h2 id="calTitle" style="font-size:20px;font-weight:600;min-width:200px;text-align:center"></h2>
+    <button type="button" class="btn-sec" id="btnNext">→</button>
+    <button type="button" class="btn-sec btn-sm" id="btnHoy">Hoy</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="muted" id="calCount"></span>
+    <button type="button" class="btn" id="btnNuevaVisita">+ Agendar visita</button>
+  </div>
+</div>
+
+<!-- Formulario nueva visita -->
+<div class="box mb-4 hidden" id="formVisita">
+  <div class="box-header">Nueva visita</div>
+  <div class="box-body">
+    <form id="visitaForm">
+      <div class="form-row">
+        <div>
+          <label>Empresa *</label>
+          <select name="empresa_id" required>
+            <option value="">-- Seleccione --</option>
+            {% for e in empresas %}
+            <option value="{{ e.id }}">{{ e.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Fecha *</label>
+          <input type="date" name="fecha" required min="{{ hoy_min }}">
+        </div>
+        <div>
+          <label>Hora entrada</label>
+          <input type="time" name="hora_entrada" required title="Mínimo {{ anticipacion }} h de anticipación">
+        </div>
+        <div>
+          <label>Hora salida</label>
+          <input type="time" name="hora_salida">
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>Categoría</label>
+          <select name="categoria">
+            <option>Evaluación ergonómica</option>
+            <option>Estudio de tiempos</option>
+            <option>Seguimiento</option>
+            <option>Inspección general</option>
+            <option>Capacitación</option>
+          </select>
+        </div>
+        <div>
+          <label>Salón / zona</label>
+          <input name="salon" placeholder="Nave A, Bodega...">
+        </div>
+        <div>
+          <label>Cantidad de puestos</label>
+          <input type="number" name="cantidad_puestos" min="0" value="1">
+        </div>
+        <div>
+          <label>Visitante / responsable *</label>
+          <input name="responsable" required placeholder="Nombre de quien realiza la visita">
+        </div>
+      </div>
+      <div class="form-row">
+        <div style="grid-column:1/-1">
+          <label>Observaciones</label>
+          <input name="observaciones">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn">Guardar visita</button>
+        <button type="button" class="btn-sec" id="btnCancelVisita">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="box">
+  <div class="box-body">
+    <div class="cal-grid" id="calHead"></div>
+    <div class="cal-grid" id="calBody" style="margin-top:6px"></div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var visitas = {{ visitas | tojson }};
+  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  var hoy = new Date();
+  var vista = { y: hoy.getFullYear(), m: hoy.getMonth() };
+
+  document.getElementById('calHead').innerHTML = dias.map(function (d) {
+    return '<div class="cal-head">' + d + '</div>';
+  }).join('');
+
+  // Formulario
+  document.getElementById('btnNuevaVisita').onclick = function () {
+    document.getElementById('formVisita').classList.remove('hidden');
+    var f = document.querySelector('#visitaForm input[name=fecha]');
+    if (f && !f.value) {
+      f.value = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + '-' + String(hoy.getDate()).padStart(2,'0');
+    }
+  };
+  document.getElementById('btnCancelVisita').onclick = function () {
+    document.getElementById('formVisita').classList.add('hidden');
+  };
+  document.getElementById('visitaForm').onsubmit = async function (e) {
+    e.preventDefault();
+    var data = {};
+    this.querySelectorAll('input,select').forEach(function (el) {
+      if (el.name) data[el.name] = el.value;
+    });
+    if (data.hora_entrada && data.hora_salida && data.hora_salida < data.hora_entrada) {
+      toast('La hora de salida debe ser después de la de entrada.', 'warning');
+      return false;
+    }
+    var res = await api('/api/visita', { method: 'POST', body: data });
+    if (res.ok) {
+      toast(res.data.msg || 'Visita agendada', 'ok');
+      setTimeout(function () { location.reload(); }, 500);
+    }
+    return false;
+  };
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function key(y, m, d) { return y + '-' + pad(m + 1) + '-' + pad(d); }
+
+  function byDate() {
+    var map = {};
+    visitas.forEach(function (v) {
+      if (!v.fecha) return;
+      if (!map[v.fecha]) map[v.fecha] = [];
+      map[v.fecha].push(v);
+    });
+    return map;
+  }
+
+  function render() {
+    var map = byDate();
+    document.getElementById('calTitle').textContent = meses[vista.m] + ' ' + vista.y;
+    var first = new Date(vista.y, vista.m, 1);
+    var startDow = (first.getDay() + 6) % 7;
+    var daysInMonth = new Date(vista.y, vista.m + 1, 0).getDate();
+    var prevDays = new Date(vista.y, vista.m, 0).getDate();
+    var html = '';
+    var cells = [];
+    for (var i = 0; i < startDow; i++) {
+      cells.push({ d: prevDays - startDow + 1 + i, other: true, y: vista.m === 0 ? vista.y - 1 : vista.y, m: vista.m === 0 ? 11 : vista.m - 1 });
+    }
+    for (var d = 1; d <= daysInMonth; d++) {
+      cells.push({ d: d, other: false, y: vista.y, m: vista.m });
+    }
+    while (cells.length % 7 !== 0) {
+      var n = cells.length - startDow - daysInMonth + 1;
+      cells.push({ d: n, other: true, y: vista.m === 11 ? vista.y + 1 : vista.y, m: vista.m === 11 ? 0 : vista.m + 1 });
+    }
+    var totalMes = 0;
+    cells.forEach(function (c) {
+      var k = key(c.y, c.m, c.d);
+      var evs = map[k] || [];
+      if (!c.other) totalMes += evs.length;
+      var isToday = !c.other && c.y === hoy.getFullYear() && c.m === hoy.getMonth() && c.d === hoy.getDate();
+      html += '<div class="cal-day' + (c.other ? ' other' : '') + (isToday ? ' today' : '') + '">';
+      html += '<div class="cal-day-num">' + c.d + '</div>';
+      evs.slice(0, 3).forEach(function (v) {
+        var title = (v.hora_entrada ? v.hora_entrada + ' · ' : '') + v.empresa + (v.categoria ? ' — ' + v.categoria : '');
+        html += '<span class="cal-event pending" data-id="' + v.id + '" title="' + title.replace(/"/g, '&quot;') + '">' +
+          (v.hora_entrada || '') + ' ' + v.empresa + '</span>';
+      });
+      if (evs.length > 3) html += '<span class="muted" style="font-size:11px">+' + (evs.length - 3) + ' más</span>';
+      html += '</div>';
+    });
+    document.getElementById('calBody').innerHTML = html;
+    document.getElementById('calCount').textContent = totalMes + ' visita(s) este mes';
+
+    document.querySelectorAll('.cal-event').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var id = parseInt(el.getAttribute('data-id'), 10);
+        var v = visitas.find(function (x) { return x.id === id; });
+        if (v) showModal(v);
+      });
+    });
+  }
+
+  function showModal(v) {
+    var root = document.getElementById('modalRoot');
+    root.innerHTML =
+      '<div class="modal-bg" id="modalBg">' +
+      '<div class="modal-card">' +
+      '<button type="button" class="modal-close" id="modalClose">&times;</button>' +
+      '<h3>' + esc(v.empresa) + '</h3>' +
+      '<div class="modal-body">' +
+      '<p style="margin-bottom:10px"><b>Fecha:</b> ' + esc(v.fecha) + '</p>' +
+      '<p style="margin-bottom:10px"><b>Horario:</b> ' + esc(v.hora_entrada || '—') + ' → ' + esc(v.hora_salida || '—') + '</p>' +
+      '<p style="margin-bottom:10px"><b>Categoría:</b> ' + esc(v.categoria || '—') + '</p>' +
+      '<p style="margin-bottom:10px"><b>Salón / zona:</b> ' + esc(v.salon || '—') + '</p>' +
+      '<p style="margin-bottom:10px"><b>Puestos:</b> ' + (v.cantidad_puestos || 0) + '</p>' +
+      '<p style="margin-bottom:10px"><b>Responsable:</b> ' + esc(v.responsable || '—') + '</p>' +
+      (v.observaciones ? '<p style="margin-bottom:10px"><b>Observaciones:</b> ' + esc(v.observaciones) + '</p>' : '') +
+      '<div style="margin-top:16px"><button type="button" class="btn-sec btn-danger" id="btnDelVisita">Eliminar visita</button></div>' +
+      '</div></div></div>';
+    document.getElementById('modalClose').onclick = closeModal;
+    document.getElementById('modalBg').onclick = function (e) {
+      if (e.target.id === 'modalBg') closeModal();
+    };
+    document.getElementById('btnDelVisita').onclick = async function () {
+      if (!confirm('¿Eliminar esta visita?')) return;
+      var res = await api('/api/visita/' + v.id, { method: 'DELETE' });
+      if (res.ok) {
+        toast(res.data.msg, 'ok');
+        setTimeout(function () { location.reload(); }, 400);
+      }
+    };
+  }
+  function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+  document.getElementById('btnPrev').onclick = function () {
+    vista.m--; if (vista.m < 0) { vista.m = 11; vista.y--; } render();
+  };
+  document.getElementById('btnNext').onclick = function () {
+    vista.m++; if (vista.m > 11) { vista.m = 0; vista.y++; } render();
+  };
+  document.getElementById('btnHoy').onclick = function () {
+    vista.y = hoy.getFullYear(); vista.m = hoy.getMonth(); render();
+  };
+  render();
+})();
+</script>
+{% endblock %}
